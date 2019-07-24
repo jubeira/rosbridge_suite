@@ -78,6 +78,9 @@ class MultiSubscriber():
             raise TopicNotEstablishedException(topic)
 
         # topic_type is a list of types at this point; only one type is supported.
+        if len(topic_type) > 1:
+            node_handle.get_logger().warning('More than one topic type detected: {}'.format(topic_type))
+
         topic_type = topic_type[0]
         # Use the established topic type if none was specified
         if msg_type is None:
@@ -199,7 +202,7 @@ class MultiSubscriber():
         """
         with self.lock:
             self.callback(msg, [self.new_subscriptions.values()])
-            self.subscriptions.update(new_subscriptions)
+            self.subscriptions.update(self.new_subscriptions)
             self.new_subscriptions = {}
             self.node_handle.destroy_subscription(self.new_subscriber)
             self.new_subscriber = None

@@ -33,6 +33,7 @@
 
 from __future__ import print_function
 import rclpy
+from rclpy.clock import ROSClock
 
 from rosbridge_library.internal import ros_loader
 

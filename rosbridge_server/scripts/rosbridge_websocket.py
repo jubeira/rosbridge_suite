@@ -43,7 +43,8 @@ from tornado.ioloop import PeriodicCallback
 from tornado.web import Application
 
 from rclpy.node import Node
-from rclpy.qos import qos_profile_default, QoSDurabilityPolicy
+from rclpy.parameter import Parameter
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from std_msgs.msg import Int32
 
 from rosbridge_server import RosbridgeWebSocket
@@ -65,77 +66,61 @@ class RosbridgeWebsocketNode(Node):
     def __init__(self):
         super().__init__('rosbridge_websocket')
 
+        RosbridgeWebSocket.node_handle = self
+
         ##################################################
         # Parameter handling                             #
         ##################################################
-        retry_startup_delay = self.get_parameter('retry_startup_delay').value
-        retry_startup_delay = 2.0 if retry_startup_delay is None
-                                  else retry_startup_delay  # seconds
+        retry_startup_delay = self.declare_parameter('retry_startup_delay', 2.0).value  # seconds.
 
-
-        use_compression = self.get_parameter('use_compression').value
-        RosbridgeWebSocket.use_compression = False if use_compression is None
-                                                   else use_compression
+        RosbridgeWebSocket.use_compression = self.declare_parameter(
+            'use_compression', False).value
 
         # get RosbridgeProtocol parameters
-        fragment_timeout = self.get_parameter('fragment_timeout').value
-        RosbridgeWebSocket.fragment_timeout = RosbridgeWebSocket.fragment_timeout
-                                              if fragment_timeout is None
-                                              else fragment_timeout
+        RosbridgeWebSocket.fragment_timeout = self.declare_parameter(
+            'fragment_timeout', RosbridgeWebSocket.fragment_timeout).value
 
-        delay_between_messages = self.get_parameter('delay_between_messages').value
-        RosbridgeWebSocket.delay_between_messages = RosbridgeWebSocket.delay_between_messages 
-                                                    if delay_between_messages is None
-                                                    else delay_between_messages
+        RosbridgeWebSocket.delay_between_messages = self.declare_parameter(
+            'delay_between_messages', RosbridgeWebSocket.delay_between_messages).value
 
-        max_message_size = self.get_parameter('max_message_size').value
-        RosbridgeWebSocket.max_message_size = RosbridgeWebSocket.max_message_size
-                                              if max_message_size is None
-                                              else max_message_size
+        RosbridgeWebSocket.max_message_size = self.declare_parameter(
+            'max_message_size', RosbridgeWebSocket.max_message_size).value
 
-        unregister_timeout = self.get_parameter('unregister_timeout').value
-        RosbridgeWebSocket.unregister_timeout = RosbridgeWebSocket.unregister_timeout
-                                                if unregister_timeout is None
-                                                else unregister_timeout
+        RosbridgeWebSocket.unregister_timeout = self.declare_parameter(
+            'unregister_timeout', RosbridgeWebSocket.unregister_timeout).value
 
-        bson_only_mode = self.get_parameter('retry_startup_delay').value
-        bson_only_mode = False if bson_only_mode is None
-                               else bson_only_mode
+        bson_only_mode = self.declare_parameter('bson_only_mode', False).value
 
         if RosbridgeWebSocket.max_message_size == "None":
             RosbridgeWebSocket.max_message_size = None
 
         # SSL options
-        certfile = self.get_parameter('certfile').value
-        keyfile = self.get_parameter('keyfile').value
+        certfile = self.declare_parameter('certfile').value
+        keyfile = self.declare_parameter('keyfile').value
         # if authentication should be used
-        authenticate = self.get_parameter('authenticate').value
-        RosbridgeWebSocket.authenticate = False if authenticate is None else authenticate
+        RosbridgeWebSocket.authenticate = self.declare_parameter('authenticate', False).value
 
-        port = self.get_parameter('port').value
-        port = 9090 if port is None else port
+        port = self.declare_parameter('port', 9090).value
         
-        address = self.get_parameter('address').value
-        address = "" if address is None else address
+        address = self.declare_parameter('address', '').value
 
         # Publisher for number of connected clients
         # QoS profile with transient local durability (latched topic in ROS 1).
-        client_count_qos_profile = qos_profile_default
-        client_count_qos_profile.durability = QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL
+        client_count_qos_profile = QoSProfile(
+            queue_size=10,
+            durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL
+        )
 
         RosbridgeWebSocket.client_count_pub = self.create_publisher(Int32, 'client_count',
                                                                     qos_profile=client_count_qos_profile)
         RosbridgeWebSocket.client_count_pub.publish(Int32(data=0))
 
         # Get the glob strings and parse them as arrays.
-        topics_glob = self.get_parameter('topics_glob').value
-        topics_glob = '' if topics_glob is None else topics_glob
+        topics_glob = self.declare_parameter('topics_glob', '').value
 
-        services_glob = self.get_parameter('topics_glob').value
-        services_glob = '' if services_glob is None else services_glob
+        services_glob = self.declare_parameter('services_glob', '').value
 
-        params_glob = self.get_parameter('params_glob').value
-        params_glob = '' if params_glob is None else params_glob
+        params_glob = self.declare_parameter('params_glob', '').value
 
         RosbridgeWebSocket.topics_glob = [
             element.strip().strip("'")

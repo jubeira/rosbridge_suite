@@ -32,6 +32,7 @@
 
 from threading import Thread
 from rclpy import spin_until_future_complete
+from rclpy.expand_topic_name import expand_topic_name
 from rosbridge_library.internal.ros_loader import get_service_class
 from rosbridge_library.internal.ros_loader import get_service_request_instance
 from rosbridge_library.internal.message_conversion import populate_instance
@@ -98,14 +99,16 @@ def call_service(node_handle, service, args=None):
     # Given the service name, fetch the type and class of the service,
     # and a request instance
 
-    # TODO(@jubeira): check if service name requires processing
-    # (equivalent to rospy.resolve_name)
+    # This should be equivalent to rospy.resolve_name.
+    service = expand_topic_name(service, node_handle.get_name(), node_handle.get_namespace())
 
     service_names_and_types = dict(node_handle.get_service_names_and_types())
     service_type = service_names_and_types.get(service)
     if service_type is None:
         raise InvalidServiceException(service)
     # service_type is a tuple of types at this point; only one type is supported.
+    if len(service_type) > 1:
+        node_handle.get_logger().warning('More than one service type detected: {}'.format(service_type))
     service_type = service_type[0]
 
     service_class = get_service_class(service_type)
