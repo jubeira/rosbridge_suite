@@ -34,8 +34,10 @@
 from time import time
 from copy import copy
 from threading import Lock, Timer
+from rclpy.duration import Duration
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from rosbridge_library.internal import ros_loader, message_conversion
+from rosbridge_library.internal.message_conversion import msg_class_type_repr
 from rosbridge_library.internal.topics import TopicNotEstablishedException, TypeConflictException
 
 
@@ -73,8 +75,12 @@ class MultiPublisher():
         if msg_type is None and topic_type is None:
             raise TopicNotEstablishedException(topic)
 
-        # topic_type is a list of types at this point; only one type is supported.
-        topic_type = topic_type[0]
+        # topic_type is a list of types or None at this point; only one type is supported.
+        if topic_type is not None:
+            if len(topic_type) > 1:
+                node_handle.get_logger().warning('More than one topic type detected: {}'.format(topic_type))
+            topic_type = topic_type[0]
+
         # Use the established topic type if none was specified
         if msg_type is None:
             msg_type = topic_type
@@ -83,8 +89,9 @@ class MultiPublisher():
         msg_class = ros_loader.get_message_class(msg_type)
 
         # Make sure the specified msg type and established msg type are same
-        if topic_type is not None and topic_type != msg_class._type:
-            raise TypeConflictException(topic, topic_type, msg_class._type)
+        msg_type_string = msg_class_type_repr(msg_class)
+        if topic_type is not None and topic_type != msg_type_string:
+            raise TypeConflictException(topic, topic_type, msg_type_string)
 
         # Create the publisher and associated member variables
         self.clients = {}
@@ -126,7 +133,7 @@ class MultiPublisher():
         """
         if not ros_loader.get_message_class(msg_type) is self.msg_class:
             raise TypeConflictException(self.topic,
-                                        self.msg_class._type, msg_type)
+                                        msg_class_type_repr(self.msg_class), msg_type)
         return
 
     def publish(self, msg):
@@ -141,10 +148,6 @@ class MultiPublisher():
         publisher
 
         """
-        # First, check the publisher consistency listener to see if it's done
-        if self.listener.attached and self.listener.timed_out():
-            self.listener.detach()
-
         # Create a message instance
         inst = self.msg_class()
 

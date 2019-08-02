@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Software License Agreement (BSD License)
 #
 # Copyright (c) 2012, Willow Garage, Inc.
@@ -38,10 +38,12 @@ import time
 
 from socket import error
 
+from threading import Thread
 from tornado.ioloop import IOLoop
 from tornado.ioloop import PeriodicCallback
 from tornado.web import Application
 
+import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
@@ -56,7 +58,8 @@ from rosbridge_library.capabilities.advertise_service import AdvertiseService
 from rosbridge_library.capabilities.unadvertise_service import UnadvertiseService
 from rosbridge_library.capabilities.call_service import CallService
 
-from std_msgs.msg import Int32
+def start_hook():
+    IOLoop.instance().start()
 
 def shutdown_hook():
     IOLoop.instance().stop()
@@ -107,7 +110,7 @@ class RosbridgeWebsocketNode(Node):
         # Publisher for number of connected clients
         # QoS profile with transient local durability (latched topic in ROS 1).
         client_count_qos_profile = QoSProfile(
-            queue_size=10,
+            depth=10,
             durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL
         )
 
@@ -258,14 +261,13 @@ class RosbridgeWebsocketNode(Node):
                     application.listen(port, address, ssl_options={ "certfile": certfile, "keyfile": keyfile})
                 else:
                     application.listen(port, address)
-                self.get_logger().info("Rosbridge WebSocket server started on port %d", port)
+                self.get_logger().info("Rosbridge WebSocket server started on port {}".format(port))
                 connected = True
             except error as e:
-                self.get_logger().warn("Unable to start server: " + str(e) +
-                              " Retrying in " + str(retry_startup_delay) + "s.")
+                self.get_logger().warn(
+                    "Unable to start server: {} "
+                    "Retrying in {}s.".format(e, retry_startup_delay))
                 time.sleep(retry_startup_delay)
-
-        IOLoop.instance().start()
 
 
 def main(args=None):
@@ -273,8 +275,11 @@ def main(args=None):
         args = sys.argv
     
     rclpy.init(args=args)
-    rosbridge_websocket_node = RosbridgeWebsocketNode(args)
-    rclpy.spin(rosbridge_websocket_node)
+    rosbridge_websocket_node = RosbridgeWebsocketNode()
+
+    spin_callback = PeriodicCallback(lambda: rclpy.spin_once(rosbridge_websocket_node, timeout_sec=0.01), 100)
+    spin_callback.start()
+    start_hook()
 
     node.destroy_node()
     rclpy.shutdown()

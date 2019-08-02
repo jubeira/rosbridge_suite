@@ -32,7 +32,9 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 from threading import Lock
+
 from rosbridge_library.internal import ros_loader
+from rosbridge_library.internal.message_conversion import msg_class_type_repr
 from rosbridge_library.internal.topics import TopicNotEstablishedException
 from rosbridge_library.internal.topics import TypeConflictException
 from rosbridge_library.internal.outgoing_message import OutgoingMessage
@@ -77,11 +79,12 @@ class MultiSubscriber():
         if msg_type is None and topic_type is None:
             raise TopicNotEstablishedException(topic)
 
-        # topic_type is a list of types at this point; only one type is supported.
-        if len(topic_type) > 1:
-            node_handle.get_logger().warning('More than one topic type detected: {}'.format(topic_type))
+        # topic_type is a list of types or None at this point; only one type is supported.
+        if topic_type is not None:
+            if len(topic_type) > 1:
+                node_handle.get_logger().warning('More than one topic type detected: {}'.format(topic_type))
+            topic_type = topic_type[0]
 
-        topic_type = topic_type[0]
         # Use the established topic type if none was specified
         if msg_type is None:
             msg_type = topic_type
@@ -90,8 +93,9 @@ class MultiSubscriber():
         msg_class = ros_loader.get_message_class(msg_type)
 
         # Make sure the specified msg type and established msg type are same
-        if topic_type is not None and topic_type != msg_class._type:
-            raise TypeConflictException(topic, topic_type, msg_class._type)
+        msg_type_string = msg_class_type_repr(msg_class)
+        if topic_type is not None and topic_type != msg_type_string:
+            raise TypeConflictException(topic, topic_type, msg_type_string)
 
         # Create the subscriber and associated member variables
         # Subscriptions is initialized with the current client to start with.
@@ -100,13 +104,13 @@ class MultiSubscriber():
         self.topic = topic
         self.msg_class = msg_class
         self.node_handle = node_handle
-        qos_profile = QoSProfile(durability=QoSDurabilityPolicy.RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL)
-        self.subscriber = node_handle.create_subscription(msg_class, topic, self.callback, qos_profile=qos_profile)
+        # TODO(@jubeira): add support for other QoS.
+        self.subscriber = node_handle.create_subscription(msg_class, topic, self.callback, 10)
         self.new_subscriber = None
         self.new_subscriptions = {}
 
     def unregister(self):
-        self.node_handle.destroy_subscription(subscriber)
+        self.node_handle.destroy_subscription(self.subscriber)
         with self.lock:
             self.subscriptions.clear()
 
@@ -124,7 +128,7 @@ class MultiSubscriber():
         """
         if not ros_loader.get_message_class(msg_type) is self.msg_class:
             raise TypeConflictException(self.topic,
-                                        self.msg_class._type, msg_type)
+                                        msg_class_type_repr(self.msg_class), msg_type)
         return
 
     def subscribe(self, client_id, callback):
@@ -234,7 +238,6 @@ class SubscriberManager():
 
         if msg_type is not None:
             self._subscribers[topic].verify_type(msg_type)
-
 
     def unsubscribe(self, client_id, topic):
         """ Unsubscribe from a topic

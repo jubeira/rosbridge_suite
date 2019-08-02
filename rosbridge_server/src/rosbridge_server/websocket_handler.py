@@ -31,7 +31,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 from rclpy.time import Time
-from rosauth.srv import Authentication
+# TODO(@jubeira): Re-add once rosauth is ported to ROS2.
+# from rosauth.srv import Authentication
 
 import sys
 import threading
@@ -44,6 +45,8 @@ from tornado.gen import coroutine
 
 from rosbridge_library.rosbridge_protocol import RosbridgeProtocol
 from rosbridge_library.util import json, bson
+
+from std_msgs.msg import Int32
 
 
 def _log_exception():
@@ -58,7 +61,7 @@ def log_exceptions(f):
     def wrapper(*args, **kwargs):
         try:
             return f(*args, **kwargs)
-        except:
+        except Exception:
             _log_exception()
             raise
     return wrapper
@@ -76,7 +79,7 @@ class RosbridgeWebSocket(WebSocketHandler):
     fragment_timeout = 600                  # seconds
     # protocol.py:
     delay_between_messages = 0              # seconds
-    max_message_size = None                 # bytes
+    max_message_size = 10000000             # bytes
     unregister_timeout = 10.0               # seconds
     bson_only_mode = False
     node_handle = None
@@ -101,13 +104,13 @@ class RosbridgeWebSocket(WebSocketHandler):
             cls.client_id_seed += 1
             cls.clients_connected += 1
             if cls.client_count_pub:
-                cls.client_count_pub.publish(cls.clients_connected)
+                cls.client_count_pub.publish(Int32(data=cls.clients_connected))
         except Exception as exc:
-            cls.node_handle().get_logger().error("Unable to accept incoming connection.  Reason: %s", str(exc))
+            cls.node_handle.get_logger().error("Unable to accept incoming connection.  Reason: {}".format(exc))
 
-        cls.node_handle().get_logger().info("Client connected.  %d clients total.", cls.clients_connected)
+        cls.node_handle.get_logger().info("Client connected. {} clients total.".format(cls.clients_connected))
         if cls.authenticate:
-            cls.node_handle().get_logger().info("Awaiting proper authentication...")
+            cls.node_handle.get_logger().info("Awaiting proper authentication...")
 
     @log_exceptions
     def on_message(self, message):
@@ -146,11 +149,11 @@ class RosbridgeWebSocket(WebSocketHandler):
                         cls.node_handle.get_logger.error('Authenticate service call failed')
 
                     if self.authenticated:
-                        cls.node_handle.get_logger().info("Client %d has authenticated.", self.protocol.client_id)
+                        cls.node_handle.get_logger().info("Client {} has authenticated.".format(self.protocol.client_id))
                         return
                 # if we are here, no valid authentication was given
-                cls.node_handle.get_logger().warn("Client %d did not authenticate. Closing connection.",
-                    self.protocol.client_id)
+                cls.node_handle.get_logger().warn(
+                    "Client {} did not authenticate. Closing connection.".format(self.protocol.client_id))
                 self.close()
             except:
                 # proper error will be handled in the protocol class
@@ -165,8 +168,8 @@ class RosbridgeWebSocket(WebSocketHandler):
         cls.clients_connected -= 1
         self.protocol.finish()
         if cls.client_count_pub:
-            cls.client_count_pub.publish(cls.clients_connected)
-        cls.node_handle.get_logger().info("Client disconnected. %d clients total.", cls.clients_connected)
+            cls.client_count_pub.publish(Int32(data=cls.clients_connected))
+        cls.node_handle.get_logger().info("Client disconnected. {} clients total.".format(cls.clients_connected))
 
     def send_message(self, message):
         if type(message) == bson.BSON:

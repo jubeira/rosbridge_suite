@@ -52,7 +52,7 @@ class Registration():
         self.client_id = client_id
         self.topic = topic
         self.clients = {}
-        self.node_handle
+        self.node_handle = node_handle
 
     def unregister(self):
         manager.unregister(self.client_id, self.topic)
